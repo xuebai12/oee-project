@@ -1,0 +1,11 @@
+[project]
+name = "oee-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "plotly>=6.5.0",
+    "pyserial>=3.5",
+    "streamlit-autorefresh>=1.0.1",
+]
