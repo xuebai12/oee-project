@@ -1,0 +1,12 @@
+# OEE Project Configuration
+
+serial:
+  port: "/dev/cu.usbmodem1401"
+  baud_rate: 9600
+
+production:
+  target_steps: 30
+  ideal_cycle_time: 20.0  # seconds
+
+database:
+  path: "oee_data.db"

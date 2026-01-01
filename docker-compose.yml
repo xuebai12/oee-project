@@ -1,0 +1,23 @@
+services:
+  # 监控服务 (数据采集)
+  monitor:
+    build: .
+    volumes:
+      - .:/app
+      - /dev:/dev  # 映射宿主机串口到容器
+    privileged: true # 串口访问通常需要特权
+    command: python src/oee/oee_monitor.py
+    restart: always
+
+  # 仪表盘服务 (数据展示)
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    environment:
+      - STREAMLIT_SERVER_PORT=8501
+    depends_on:
+      - monitor
+    restart: always
