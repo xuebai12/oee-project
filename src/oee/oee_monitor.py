@@ -1,33 +1,24 @@
 import time
 import sys
 import os
-import sqlite3
-import yaml
+import csv
 from datetime import datetime
 
-# --- 1. Load Configuration ---
-def load_config():
-    config_path = os.path.join(os.getcwd(), "config.yaml")
-    if not os.path.exists(config_path):
-        # Default config if file missing
-        return {
-            'serial': {'port': '/dev/cu.usbmodem1401', 'baud_rate': 9600},
-            'production': {'target_steps': 30, 'ideal_cycle_time': 20.0},
-            'database': {'path': 'oee_data.db'}
-        }
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+# --- 1. Core Configuration (核心配置) ---
+# ⚠️ Arduino 端口 (如果连不上，代码会自动扫描并提示新端口)
+SERIAL_PORT = '/dev/cu.usbmodem12401'  
+BAUD_RATE = 9600
+TARGET_STEPS = 30 
+IDEAL_CYCLE_TIME = 20.0
 
-CONFIG = load_config()
-
-# Try to import serial
+# 尝试导入串口库
 try:
     import serial
     import serial.tools.list_ports 
 except ImportError:
     serial = None
 
-# Mock Serial
+# 模拟模式 (防止没有安装 pyserial 时报错)
 if serial is None:
     class _FakeSerial:
         def __init__(self, *args, **kwargs): print("⚠️ Simulation Mode")
@@ -38,173 +29,125 @@ if serial is None:
     class _SerialModule: Serial = _FakeSerial
     serial = _SerialModule()
 
-class OEEMonitor:
-    def __init__(self):
-        self.config = CONFIG
-        self.port = self.config['serial']['port']
-        self.baud = self.config['serial']['baud_rate']
-        self.target_steps = self.config['production']['target_steps']
-        self.ideal_cycle_time = self.config['production']['ideal_cycle_time']
-        self.db_path = self.config['database']['path']
-        
-        self.current_state = "STOPPED"
-        self.start_time = time.time()
-        self.time_production = 0.0
-        self.time_setup = 0.0
-        self.time_downtime = 0.0
-        self.last_update_time = time.time()
-        self.total_count = 0  
-        self.defect_count = 0 
-        
-        self.init_db()
-        self.ser = self.get_serial_connection()
+# --- Variables ---
+current_state = "STOPPED"
+start_time = time.time()
+time_production = 0.0
+time_setup = 0.0
+time_downtime = 0.0
+last_update_time = time.time()
+total_count = 0 
+good_count = 0
+defect_count = 0 
 
-    def init_db(self):
-        """Initialize SQLite database for OEE data."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS oee_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT,
-                state TEXT,
-                prod_time REAL,
-                setup_time REAL,
-                down_time REAL,
-                total_count INTEGER,
-                defect_count INTEGER,
-                availability REAL,
-                performance REAL,
-                quality REAL,
-                oee REAL
-            )
-        ''')
-        conn.commit()
-        conn.close()
-        print(f"📂 Database initialized at: {self.db_path}")
+# --- 🔥 Path Setup (核心修复：强制定位到用户目录) ---
+# 1. 获取当前用户的主目录 (例如 /Users/baixue)
+home_dir = os.path.expanduser("~")
 
-    def get_serial_connection(self):
-        """Robust serial connection logic."""
-        first_attempt = True
-        while True:
-            try:
-                if first_attempt:
-                    print(f"🔌 Connecting to {self.port}...")
-                
-                ser = serial.Serial(self.port, self.baud, timeout=0.1)
-                print(f"✅ Connected!")
-                time.sleep(2)
-                return ser
-                
-            except Exception:
-                if first_attempt:
-                    print(f"⚠️ Connection failed. Searching for Arduino...")
-                    first_attempt = False
-                
-                if serial and hasattr(serial, 'tools'):
-                    ports = serial.tools.list_ports.comports()
-                    for p in ports:
-                        if 'usb' in p.device.lower():
-                            try:
-                                ser = serial.Serial(p.device, self.baud, timeout=0.1)
-                                self.port = p.device
-                                print(f"\n✅ Auto-Connected to new port: {self.port}")
-                                time.sleep(2)
-                                return ser
-                            except: pass
-                time.sleep(5) 
+# 2. 拼接完整的日志目录路径: /Users/baixue/oee-project/oee_logs
+log_dir = os.path.join(home_dir, "oee-project", "oee_logs")
 
-    def calculate_oee(self):
-        total_planned = time.time() - self.start_time
-        if total_planned < 1: return 0, 0, 0, 0
-        a = self.time_production / total_planned
-        p = (self.total_count * self.ideal_cycle_time) / self.time_production if self.time_production > 0 else 0
-        q = (self.total_count - self.defect_count) / self.total_count if self.total_count > 0 else 1
-        return a, p, q, a*p*q
+# 3. 尝试创建这个文件夹
+try:
+    os.makedirs(log_dir, exist_ok=True)
+    print(f"📂 Log directory verified: {log_dir}")
+except Exception as e:
+    print(f"❌ Error creating directory: {e}")
+    # 如果失败，退回到桌面 (双重保险)
+    log_dir = os.path.join(home_dir, "Desktop")
+    print(f"⚠️ Fallback to Desktop: {log_dir}")
 
-    def log_to_db(self):
-        """Log current metrics to SQLite."""
-        a, p, q, o = self.calculate_oee()
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO oee_logs (
-                timestamp, state, prod_time, setup_time, down_time, 
-                total_count, defect_count, availability, performance, quality, oee
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            datetime.now().strftime('%H:%M:%S'),
-            self.current_state,
-            round(self.time_production, 1),
-            round(self.time_setup, 1),
-            round(self.time_downtime, 1),
-            self.total_count,
-            self.defect_count,
-            round(a * 100, 1),
-            round(p * 100, 1),
-            round(q * 100, 1),
-            round(o * 100, 1)
-        ))
-        conn.commit()
-        conn.close()
+# 初始化日志文件 (使用时间戳命名，防止覆盖)
+log_filename = os.path.join(log_dir, f"OEE_Log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+print(f"📂 Logging started: {log_filename}")
 
-    def run(self):
-        last_logged_state = None
-        last_log_time = time.time()
-        
-        try:
-            while True:
-                # 1. Read Serial
-                try:
-                    if self.ser.in_waiting:
-                        line = self.ser.readline().decode().strip()
-                        if line in ["GREEN", "RED", "YELLOW"]: 
-                            self.current_state = line
-                except (OSError, serial.SerialException):
-                    print("\n❌ Connection lost! Reconnecting...")
-                    self.ser.close()
-                    self.ser = self.get_serial_connection()
-                    continue
-                
-                # 2. Update Time
-                now = time.time()
-                elapsed = now - self.last_update_time
-                self.last_update_time = now
-                
-                if self.current_state == "GREEN":
-                    self.time_production += elapsed
-                    expected = int(self.time_production / self.ideal_cycle_time)
-                    if expected > self.target_steps:
-                        expected = self.target_steps
-                    if expected > self.total_count: 
-                        self.total_count = expected
-                elif self.current_state == "YELLOW": 
-                    self.time_setup += elapsed
-                elif self.current_state == "RED": 
-                    self.time_downtime += elapsed
-                
-                # 3. Logging
-                state_changed = (self.current_state != last_logged_state)
-                heartbeat_due = (time.time() - last_log_time >= 1.0)
-                
-                if state_changed or heartbeat_due:
-                    if state_changed:
-                        print(f"🔄 State Change: {last_logged_state} -> {self.current_state}")
-                    
+# 立即写入表头，确保文件被创建
+try:
+    with open(log_filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "State", "Prod_Time", "Setup_Time", "Down_Time", "Total_Count", "Defects", "A", "P", "Q", "OEE"])
+        # 写入初始行
+        writer.writerow([datetime.now().strftime('%H:%M:%S'), "STOPPED", 0, 0, 0, 0, 0, 0, 0, 1, 0])
+        f.flush()
+        os.fsync(f.fileno())
+except Exception as e:
+    print(f"❌ Error creating file: {e}")
+
+# --- Connection Logic ---
+def connect_arduino():
+    try:
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
+        print(f"✅ Connected to: {SERIAL_PORT}")
+        time.sleep(2)
+        return ser
+    except Exception as e:
+        print(f"⚠️ Connection failed: {e}")
+        print("🔍 Scanning ports...")
+        if serial and hasattr(serial, 'tools'):
+            ports = serial.tools.list_ports.comports()
+            for p in ports:
+                # 自动寻找名字里带 usb 的设备
+                if 'usb' in p.device.lower():
+                    print(f"👉 Found USB Device: {p.device}")
                     try:
-                        self.log_to_db()
-                    except Exception as e:
-                        print(f"⚠️ Log Error: {e}")
+                        return serial.Serial(p.device, BAUD_RATE, timeout=0.1)
+                    except: pass
+        # 如果找不到，提示用户
+        print("❌ No Arduino found. Please check cable.")
+        sys.exit()
 
-                    last_logged_state = self.current_state
-                    last_log_time = time.time()
-                    
-                time.sleep(0.1)
+def calculate_oee():
+    total_planned = time.time() - start_time
+    if total_planned < 1: return 0,0,0,0
+    a = time_production / total_planned
+    p = (total_count * IDEAL_CYCLE_TIME) / time_production if time_production > 0 else 0
+    q = (total_count - defect_count) / total_count if total_count > 0 else 1
+    return a, p, q, a*p*q
 
-        except KeyboardInterrupt:
-            print("\n🛑 Finished.")
-            if self.ser: self.ser.close()
+# --- Main Loop ---
+ser = connect_arduino()
+last_logged_state = None
 
-if __name__ == "__main__":
-    monitor = OEEMonitor()
-    monitor.run()
+try:
+    while True:
+        # 1. Read Serial
+        if ser.in_waiting:
+            try:
+                line = ser.readline().decode().strip()
+                if line in ["GREEN", "RED", "YELLOW"]: current_state = line
+            except: pass
+        
+        # 2. Update Time
+        now = time.time()
+        elapsed = now - last_update_time
+        last_update_time = now
+        
+        if current_state == "GREEN":
+            time_production += elapsed
+            expected = int(time_production / IDEAL_CYCLE_TIME)
+            if expected > TARGET_STEPS: expected = TARGET_STEPS
+            if expected > total_count: total_count = expected
+        elif current_state == "YELLOW": time_setup += elapsed
+        elif current_state == "RED": time_downtime += elapsed
+        
+        # 3. Log to CSV 
+        if current_state != last_logged_state:
+            a,p,q,o = calculate_oee()
+            try:
+                with open(log_filename, 'a', newline='') as f:
+                    csv.writer(f).writerow([
+                        datetime.now().strftime('%H:%M:%S'), current_state, 
+                        f"{time_production:.1f}", f"{time_setup:.1f}", f"{time_downtime:.1f}", 
+                        total_count, defect_count, f"{a*100:.1f}", f"{p*100:.1f}", f"{q*100:.1f}", f"{o*100:.1f}"
+                    ])
+                    f.flush()
+                    os.fsync(f.fileno())
+            except: pass
+            
+            last_logged_state = current_state
+            
+        time.sleep(0.1)
+
+except KeyboardInterrupt:
+    print("\n🛑 Finished.")
+    if ser: ser.close()
