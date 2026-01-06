@@ -23,14 +23,41 @@ def load_config():
     # 拼接完整的日志目录路径: /Users/baixue/oee-project/oee_logs
     log_dir = os.path.join(home_dir, "oee-project", "oee_logs")
     
-    # Default settings (should typically match oee_monitor.py)
-    return {
+    # Default settings
+    config = {
         'production': {
-            'target_steps': 30,         # 🎯 Match TARGET_STEPS in oee_monitor.py
-            'ideal_cycle_time': 20.0     # ⏱️ Match IDEAL_CYCLE_TIME in oee_monitor.py
+            'target_steps': 30,
+            'ideal_cycle_time': 20.0
         },
         'data_path': log_dir
     }
+
+    # Load from config.yaml if it exists
+    # We assume the app is run from the project root
+    config_path = "config.yaml"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                user_config = yaml.safe_load(f)
+                if user_config:
+                    # Update production settings
+                    if 'production' in user_config:
+                        config['production'].update(user_config['production'])
+                    
+                    # Security: Validate data_path if provided
+                    if 'data_path' in user_config:
+                        proposed_path = user_config['data_path']
+                        # Simple validation: ensure it's absolute or relative to project
+                        # In a real scenario, we might want to restrict to specific subdirs
+                        if os.path.isabs(proposed_path) or not proposed_path.startswith(".."):
+                             config['data_path'] = proposed_path
+                        else:
+                            st.error(f"⚠️ Security Warning: Invalid data_path '{proposed_path}' ignored.")
+        except Exception as e:
+            print(f"Error loading config.yaml: {e}")
+
+    return config
+
 
 # Initialize global constants from config
 CONFIG = load_config()
@@ -182,7 +209,10 @@ def get_data_from_csvs():
         
         # Parse timestamp string into datetime objects for sorting/plotting
         if 'Timestamp' in full_df.columns:
-            full_df['Timestamp'] = pd.to_datetime(full_df['Timestamp'], errors='coerce')
+            # Explicitly parse with format to avoid warnings and errors
+            # The format in oee_monitor.py is typically %Y-%m-%d %H:%M:%S
+            # We use errors='coerce' to handle any malformed lines gracefully
+            full_df['Timestamp'] = pd.to_datetime(full_df['Timestamp'], format='mixed', errors='coerce')
             full_df = full_df.sort_values(by='Timestamp')
         
         # --- 🗺️ Column Mapping (字段映射) ---
