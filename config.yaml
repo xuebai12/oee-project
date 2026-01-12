@@ -1,7 +1,7 @@
 # OEE Project Configuration
 
 serial:
-  port: "/dev/cu.usbmodem1401"
+  port: "/dev/cu.usbmodem12401"
   baud_rate: 9600
 
 production:

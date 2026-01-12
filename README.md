@@ -3,6 +3,9 @@
 
 This project is a Python-based tool designed to calculate and analyze OEE for our production lines. 
 
+## Demo
+[![Watch the video](https://img.youtube.com/vi/dOijTcQgJTE/maxresdefault.jpg)](https://youtu.be/dOijTcQgJTE) 
+
 ## 🛠 Prerequisites
 
 Before you start, make sure you have the following installed on your Mac:

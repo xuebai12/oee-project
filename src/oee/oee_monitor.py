@@ -67,7 +67,7 @@ try:
         writer = csv.writer(f)
         writer.writerow(["Timestamp", "State", "Prod_Time", "Setup_Time", "Down_Time", "Total_Count", "Defects", "A", "P", "Q", "OEE"])
         # 写入初始行
-        writer.writerow([datetime.now().strftime('%H:%M:%S'), "STOPPED", 0, 0, 0, 0, 0, 0, 0, 1, 0])
+        writer.writerow([datetime.now().strftime('%Y-%m-%d %H:%M:%S'), "STOPPED", 0, 0, 0, 0, 0, 0, 0, 1, 0])
         f.flush()
         os.fsync(f.fileno())
 except Exception as e:
@@ -136,7 +136,7 @@ try:
             try:
                 with open(log_filename, 'a', newline='') as f:
                     csv.writer(f).writerow([
-                        datetime.now().strftime('%H:%M:%S'), current_state, 
+                        datetime.now().strftime('%Y-%m-%d %H:%M:%S'), current_state, 
                         f"{time_production:.1f}", f"{time_setup:.1f}", f"{time_downtime:.1f}", 
                         total_count, defect_count, f"{a*100:.1f}", f"{p*100:.1f}", f"{q*100:.1f}", f"{o*100:.1f}"
                     ])

@@ -188,20 +188,18 @@ def get_data_from_csvs():
         return pd.DataFrame(), f"⚠️ No CSV files found (目录为空): {LOG_DIR}"
 
     try:
-        df_list = []
-        for filename in all_files:
-            try:
-                # 🛡️ Prevent errors from reading empty or locked files
-                if os.path.getsize(filename) > 0:
-                    df_list.append(pd.read_csv(filename))
-            except Exception:
-                pass # Skip corrupted or unreadable files
+        # 🔥 Fix: Only load the most recent file for the Live Dashboard
+        # Sort files by modification time (newest last)
+        latest_file = max(all_files, key=os.path.getctime)
         
-        if not df_list:
-            return pd.DataFrame(), "⚠️ All CSV files are empty or unreadable."
-
-        # Combine all individual CSVs into one table
-        full_df = pd.concat(df_list, ignore_index=True)
+        try:
+            # 🛡️ Prevent errors from reading empty or locked files
+            if os.path.getsize(latest_file) == 0:
+                return pd.DataFrame(), f"⚠️ Latest log is empty: {os.path.basename(latest_file)}"
+                
+            full_df = pd.read_csv(latest_file)
+        except Exception as e:
+             return pd.DataFrame(), f"❌ Error reading latest log: {str(e)}"
         
         # 🧹 Data Cleaning: Handle NaN (empty values)
         # If there are calculation errors resulting in NaN, replace with 0
@@ -210,7 +208,7 @@ def get_data_from_csvs():
         # Parse timestamp string into datetime objects for sorting/plotting
         if 'Timestamp' in full_df.columns:
             # Explicitly parse with format to avoid warnings and errors
-            # The format in oee_monitor.py is typically %Y-%m-%d %H:%M:%S
+            # The format in oee_monitor.py is typically %Y-%m-%d %H:%M:%S (new) or %H:%M:%S (old)
             # We use errors='coerce' to handle any malformed lines gracefully
             full_df['Timestamp'] = pd.to_datetime(full_df['Timestamp'], format='mixed', errors='coerce')
             full_df = full_df.sort_values(by='Timestamp')
@@ -233,7 +231,7 @@ def get_data_from_csvs():
         raw_columns = list(full_df.columns)
         full_df.rename(columns=rename_map, inplace=True)
         
-        return full_df, f"✅ Loaded {len(all_files)} files. (Raw cols: {raw_columns})"
+        return full_df, f"✅ Live Session: {os.path.basename(latest_file)}"
         
     except Exception as e:
         return pd.DataFrame(), f"❌ Error reading logs: {str(e)}"
@@ -263,7 +261,8 @@ def render_dashboard_ui(df, msg, show_debug):
         st.code(f"Target Directory: {LOG_DIR}")
         st.code(f"System Message: {msg}")
         if not df.empty:
-            st.write("First 3 rows of data (前三行数据):", df.head(3))
+            st.write("All Log Data (完整日志数据):")
+            st.dataframe(df, use_container_width=True)
         st.divider()
 
     # If no data is available yet
