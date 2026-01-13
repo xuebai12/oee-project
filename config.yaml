@@ -6,7 +6,7 @@ serial:
 
 production:
   target_steps: 30
-  ideal_cycle_time: 20.0  # seconds
+  ideal_cycle_time: 8.5  # seconds
 
 database:
   path: "oee_data.db"

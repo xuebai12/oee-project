@@ -285,12 +285,17 @@ def render_dashboard_ui(df, msg, show_debug):
         # Final metrics in large cards
         col1, col2, col3, col4 = st.columns(4)
         
-        oee_val = last_row.get('OEE(%)', 0)
+        # Get base values from CSV
         avail_val = last_row.get('Availability(%)', 0)
         perf_val = last_row.get('Performance(%)', 0)
-        qual_val = last_row.get('Quality(%)', 0)
         total_count = last_row.get('Total_Count', 0)
         final_defects = st.session_state.final_defect_count
+        
+        # 🔥 Recalculate Quality using the user-entered defect count
+        qual_val = ((total_count - final_defects) / total_count * 100) if total_count > 0 else 100
+        
+        # 🔥 Recalculate OEE with the updated Quality
+        oee_val = (avail_val * perf_val * qual_val) / 10000  # Divide by 10000 because all are percentages
         
         with col1:
             st.metric("🎰 Final OEE Score", f"{oee_val:.1f}%", 
@@ -490,6 +495,14 @@ def render_dashboard_ui(df, msg, show_debug):
 with st.sidebar:
     st.title("🏭 Factory Sight")
     st.caption("CSV Log Monitor")
+    
+    # --- Production Settings Display (生产配置显示) ---
+    st.markdown("### ⚙️ Production Settings")
+    st.metric("🎯 Target Steps", f"{TARGET_STEPS} units")
+    st.metric("⏱️ Ideal Cycle Time", f"{IDEAL_CYCLE_TIME}s", 
+              help="Ideal time to produce one unit")
+    
+    st.divider()
     
     # 调试开关
     show_debug = st.checkbox("🐞 Show Debug Info", value=False)
