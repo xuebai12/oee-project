@@ -359,6 +359,5 @@ rm -rf .venv uv.lock
 uv sync
 ```
 
----
 
-**Built with ❤️ for manufacturing excellence**
+
