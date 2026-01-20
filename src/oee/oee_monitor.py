@@ -9,7 +9,7 @@ from datetime import datetime
 SERIAL_PORT = '/dev/cu.usbmodem12401'  
 BAUD_RATE = 9600
 TARGET_STEPS = 30 
-IDEAL_CYCLE_TIME = 20.0
+IDEAL_CYCLE_TIME = 8.5
 
 # 尝试导入串口库
 try:
