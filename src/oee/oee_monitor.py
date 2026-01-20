@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- 1. Core Configuration (核心配置) ---
 # ⚠️ Arduino 端口 (如果连不上，代码会自动扫描并提示新端口)
-SERIAL_PORT = '/dev/cu.usbmodem12401'  
+SERIAL_PORT = '/dev/cu.usbmodem1401'  
 BAUD_RATE = 9600
 TARGET_STEPS = 30 
 IDEAL_CYCLE_TIME = 8.5
